@@ -7,6 +7,7 @@ from django.contrib.auth.models import User
 class Evento(models.Model):
     usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='eventos')
     nombre = models.CharField(max_length=200)
+    tipo = models.CharField(max_length=100)  # tipo de evento (texto libre)
     fecha = models.DateField()
     limite_horas_diarias = models.PositiveIntegerField(default=6)
     creado_en = models.DateTimeField(auto_now_add=True)
