@@ -2,9 +2,12 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import generics
 from django.contrib.auth.models import User
-
 from .models import Evento
 from .serializers import EventoSerializer
+from rest_framework.permissions import AllowAny
+from .serializers import RegistroSerializer
+from rest_framework.permissions import IsAuthenticated
+from .serializers import PerfilSerializer
 
 
 @api_view(['GET'])
@@ -22,19 +25,32 @@ def home(request):
 
 class EventoListCreateView(generics.ListCreateAPIView):
     """
-    GET  /api/eventos/  -> lista todos los eventos
-    POST /api/eventos/  -> crea un evento junto con sus subtareas logisticas
+    GET  /api/eventos/  -> lista SOLO los eventos del usuario autenticado
+    POST /api/eventos/  -> crea un evento asociado al usuario autenticado
     """
     serializer_class = EventoSerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Evento.objects.all().order_by('-creado_en')
+        return Evento.objects.filter(usuario=self.request.user).order_by('-creado_en')
 
     def perform_create(self, serializer):
-        # Sprint 0-1: aun no hay login (llega en Sprint 2).
-        # Mientras tanto, todos los eventos quedan asociados a un usuario demo fijo.
-        usuario_demo, _ = User.objects.get_or_create(
-            username='usuario_demo',
-            defaults={'email': 'demo@organizador-eventos.local'}
-        )
-        serializer.save(usuario=usuario_demo)
+        serializer.save(usuario=self.request.user)
+
+class RegistroView(generics.CreateAPIView):
+    """
+    POST /api/registro/ -> crea un nuevo usuario (organizador)
+    """
+    queryset = User.objects.all()
+    serializer_class = RegistroSerializer
+    permission_classes = [AllowAny]
+
+class PerfilView(generics.RetrieveAPIView):
+    """
+    GET /api/perfil/ -> devuelve los datos del usuario autenticado
+    """
+    serializer_class = PerfilSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
