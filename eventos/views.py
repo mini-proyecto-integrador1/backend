@@ -2,12 +2,13 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import generics
 from django.contrib.auth.models import User
-from .models import Evento
-from .serializers import EventoSerializer
+from .models import Evento, SubtareaLogistica
+from .serializers import EventoSerializer, SubtareaHoySerializer
 from rest_framework.permissions import AllowAny
 from .serializers import RegistroSerializer
 from rest_framework.permissions import IsAuthenticated
 from .serializers import PerfilSerializer
+
 
 
 @api_view(['GET'])
@@ -54,3 +55,31 @@ class PerfilView(generics.RetrieveAPIView):
 
     def get_object(self):
         return self.request.user
+
+class VistaHoyView(generics.ListAPIView):
+    """
+    GET /api/hoy/ -> lista las subtareas del usuario autenticado,
+    ordenadas por fecha limite (ascendente) y luego por horas
+    estimadas (ascendente = menor esfuerzo primero en caso de empate).
+
+    Filtros opcionales por query params:
+    - ?evento=<id>      filtra por un evento especifico
+    - ?estado=<estado>  filtra por estado (pendiente, hecho, pospuesto)
+    """
+    serializer_class = SubtareaHoySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = SubtareaLogistica.objects.filter(
+            evento__usuario=self.request.user
+        ).order_by('fecha_limite', 'horas_estimadas')
+
+        evento_id = self.request.query_params.get('evento')
+        if evento_id:
+            queryset = queryset.filter(evento__id=evento_id)
+
+        estado = self.request.query_params.get('estado')
+        if estado:
+            queryset = queryset.filter(estado=estado)
+
+        return queryset
