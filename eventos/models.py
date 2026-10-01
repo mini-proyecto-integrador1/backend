@@ -33,3 +33,10 @@ class SubtareaLogistica(models.Model):
 
     def __str__(self):
         return f"{self.nombre} ({self.evento.nombre})"
+
+class PerfilOrganizador(models.Model):
+    usuario = models.OneToOneField(User, on_delete=models.CASCADE, related_name='perfil')
+    fecha_nacimiento = models.DateField()
+
+    def __str__(self):
+        return f"Perfil de {self.usuario.email}"
