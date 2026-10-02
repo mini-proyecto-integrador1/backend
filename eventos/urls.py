@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework.authtoken.views import obtain_auth_token
-from .views import health, EventoListCreateView, RegistroView, PerfilView, VistaHoyView
-
+from .views import (health, EventoListCreateView, RegistroView, PerfilView,
+                    VistaHoyView, EventoDetailView, SubtareaDetailView)
 urlpatterns = [
     path('health/', health, name='health'),
     path('eventos/', EventoListCreateView.as_view(), name='evento-list-create'),
@@ -9,4 +9,6 @@ urlpatterns = [
     path('login/', obtain_auth_token, name='login'),
     path('perfil/', PerfilView.as_view(), name='perfil'),
     path('hoy/', VistaHoyView.as_view(), name='vista-hoy'),
+    path('eventos/<int:pk>/', EventoDetailView.as_view(), name='evento-detail'),
+    path('subtareas/<int:pk>/', SubtareaDetailView.as_view(), name='subtarea-detail'),
 ]

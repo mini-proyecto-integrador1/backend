@@ -44,6 +44,11 @@ class EventoSerializer(serializers.ModelSerializer):
             SubtareaLogistica.objects.create(evento=evento, **subtarea_data)
         return evento
 
+    def update(self, validated_data_instance, validated_data):
+        # Las subtareas se editan por sus propios endpoints, aqui se ignoran
+        validated_data.pop('subtareas', None)
+        return super().update(validated_data_instance, validated_data)
+
 class RegistroSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
     first_name = serializers.CharField(required=True)
@@ -103,3 +108,22 @@ class SubtareaHoySerializer(serializers.ModelSerializer):
             'id', 'nombre', 'fecha_limite', 'horas_estimadas',
             'estado', 'nota', 'evento_id', 'evento_nombre'
         ] 
+
+class SubtareaDetalleSerializer(serializers.ModelSerializer):
+    evento_id = serializers.IntegerField(source='evento.id', read_only=True)
+
+    class Meta:
+        model = SubtareaLogistica
+        fields = ['id', 'nombre', 'fecha_limite', 'horas_estimadas',
+                  'estado', 'nota', 'evento_id']
+        read_only_fields = ['id']
+
+    def validate_nombre(self, value):
+        if not value.strip():
+            raise serializers.ValidationError('El nombre de la subtarea es obligatorio.')
+        return value
+
+    def validate_horas_estimadas(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('Las horas estimadas deben ser mayores a 0.')
+        return value

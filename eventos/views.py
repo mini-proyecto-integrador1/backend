@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework import generics
 from django.contrib.auth.models import User
 from .models import Evento, SubtareaLogistica
-from .serializers import EventoSerializer, SubtareaHoySerializer
+from .serializers import EventoSerializer, SubtareaHoySerializer, SubtareaDetalleSerializer
 from rest_framework.permissions import AllowAny
 from .serializers import RegistroSerializer
 from rest_framework.permissions import IsAuthenticated
@@ -83,3 +83,32 @@ class VistaHoyView(generics.ListAPIView):
             queryset = queryset.filter(estado=estado)
 
         return queryset
+
+class EventoDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    GET    /api/eventos/<id>/ -> detalle del evento (con sus subtareas)
+    PUT    /api/eventos/<id>/ -> edicion completa
+    PATCH  /api/eventos/<id>/ -> edicion parcial
+    DELETE /api/eventos/<id>/ -> elimina el evento y sus subtareas
+    Solo el dueño del evento puede acceder; los demas reciben 404.
+    """
+    serializer_class = EventoSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Evento.objects.filter(usuario=self.request.user)
+
+
+class SubtareaDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    GET    /api/subtareas/<id>/ -> detalle de la subtarea
+    PUT    /api/subtareas/<id>/ -> edicion completa
+    PATCH  /api/subtareas/<id>/ -> edicion parcial (ej. cambiar estado)
+    DELETE /api/subtareas/<id>/ -> elimina la subtarea
+    Solo el dueño del evento al que pertenece puede acceder.
+    """
+    serializer_class = SubtareaDetalleSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return SubtareaLogistica.objects.filter(evento__usuario=self.request.user)
