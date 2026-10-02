@@ -93,4 +93,13 @@ class PerfilSerializer(serializers.ModelSerializer):
         fields = ['id', 'email', 'first_name', 'last_name', 'fecha_nacimiento']
 
 
-    
+class SubtareaHoySerializer(serializers.ModelSerializer):
+    evento_id = serializers.IntegerField(source='evento.id', read_only=True)
+    evento_nombre = serializers.CharField(source='evento.nombre', read_only=True)
+
+    class Meta:
+        model = SubtareaLogistica
+        fields = [
+            'id', 'nombre', 'fecha_limite', 'horas_estimadas',
+            'estado', 'nota', 'evento_id', 'evento_nombre'
+        ] 
