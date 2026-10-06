@@ -127,3 +127,38 @@ class SubtareaDetalleSerializer(serializers.ModelSerializer):
         if value <= 0:
             raise serializers.ValidationError('Las horas estimadas deben ser mayores a 0.')
         return value
+
+class SubtareaCrearSerializer(serializers.ModelSerializer):
+    """
+    Agregar una gestión logística a un evento que ya existe.
+    El evento llega por la URL (context['evento']); la gestión empieza en estado 'pendiente'.
+    """
+
+    class Meta:
+        model = SubtareaLogistica
+        fields = ['id', 'nombre', 'fecha_limite', 'horas_estimadas', 'estado', 'nota']
+        read_only_fields = ['id', 'estado']
+
+    def validate_nombre(self, value):
+        if not value.strip():
+            raise serializers.ValidationError('El nombre de la gestión es obligatorio.')
+        return value.strip()
+
+    def validate_horas_estimadas(self, value):
+        if value <= 0 or value > 16:
+            raise serializers.ValidationError('Las horas estimadas deben estar entre 0,5 y 16.')
+        return value
+
+    def validate_fecha_limite(self, value):
+        from django.utils import timezone
+        evento = self.context['evento']
+        if value < timezone.localdate():
+            raise serializers.ValidationError('La fecha límite no puede ser en el pasado.')
+        if value > evento.fecha:
+            raise serializers.ValidationError(
+                f'La fecha límite debe ser antes o el mismo día del evento ({evento.fecha:%d/%m/%Y}).'
+            )
+        return value
+
+    def create(self, validated_data):
+        return SubtareaLogistica.objects.create(evento=self.context['evento'], **validated_data)
