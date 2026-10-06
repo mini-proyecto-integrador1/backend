@@ -3,7 +3,8 @@ from rest_framework.response import Response
 from rest_framework import generics
 from django.contrib.auth.models import User
 from .models import Evento, SubtareaLogistica
-from .serializers import EventoSerializer, SubtareaHoySerializer, SubtareaDetalleSerializer
+from django.shortcuts import get_object_or_404
+from .serializers import EventoSerializer, SubtareaHoySerializer, SubtareaDetalleSerializer, SubtareaCrearSerializer
 from rest_framework.permissions import AllowAny
 from .serializers import RegistroSerializer
 from rest_framework.permissions import IsAuthenticated
@@ -112,3 +113,17 @@ class SubtareaDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         return SubtareaLogistica.objects.filter(evento__usuario=self.request.user)
+
+class SubtareaCreateView(generics.CreateAPIView):
+    """
+    POST /api/eventos/<id>/subtareas/ -> agrega una gestión logística a un evento ya guardado.
+    Body: { "nombre", "fecha_limite", "horas_estimadas" }  ->  201 con la gestión creada.
+    Si el evento no existe o es de otro organizador responde 404 (aislamiento).
+    """
+    serializer_class = SubtareaCrearSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_context(self):
+        contexto = super().get_serializer_context()
+        contexto['evento'] = get_object_or_404(Evento, pk=self.kwargs['pk'], usuario=self.request.user)
+        return contexto
