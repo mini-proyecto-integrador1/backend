@@ -128,6 +128,19 @@ class SubtareaDetalleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Las horas estimadas deben ser mayores a 0.')
         return value
 
+    def validate_fecha_limite(self, value):
+        from django.utils import timezone
+        if self.instance is None or value == self.instance.fecha_limite:
+            return value
+        if value < timezone.localdate():
+            raise serializers.ValidationError('La fecha límite no puede ser en el pasado.')
+        evento = self.instance.evento
+        if value > evento.fecha:
+            raise serializers.ValidationError(
+                f'La fecha límite debe ser antes o el mismo día del evento ({evento.fecha:%d/%m/%Y}).'
+            )
+        return value
+
 class SubtareaCrearSerializer(serializers.ModelSerializer):
     """
     Agregar una gestión logística a un evento que ya existe.
@@ -162,3 +175,15 @@ class SubtareaCrearSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         return SubtareaLogistica.objects.create(evento=self.context['evento'], **validated_data)
+
+
+class LimiteDiarioSerializer(serializers.Serializer):
+
+    _MENSAJE = 'El límite debe estar entre 1 y 16 horas.'
+    limite_horas_diarias = serializers.IntegerField(
+    min_value=1, max_value=16,
+    error_messages={
+        'invalid': _MENSAJE, 'min_value': _MENSAJE, 'max_value': _MENSAJE,
+        'null': _MENSAJE, 'required': _MENSAJE,
+    },
+)
