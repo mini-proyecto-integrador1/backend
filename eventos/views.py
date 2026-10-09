@@ -1,3 +1,5 @@
+import math
+
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
@@ -16,7 +18,7 @@ from .serializers import (
 )
 from .sobrecarga import (
     ESTADOS_QUE_CUENTAN, SobrecargaError, calcular_conflicto,
-    conflictos_de_gestiones_nuevas, limite_de,
+    conflictos_de_gestiones_nuevas, limite_de, dias_por_encima, _num,
 )
 
 
@@ -213,7 +215,9 @@ class LimiteDiarioView(APIView):
         request=LimiteDiarioSerializer,
         responses={
             200: LimiteDiarioSerializer,
-            400: OpenApiResponse(description='Debe ser un entero entre 1 y 16: "El límite debe estar entre 1 y 16 horas."'),
+            400: OpenApiResponse(description='Debe ser un entero entre 1 y 16 ("El límite debe estar entre 1 y 16 horas."), '
+                                             'y no puede quedar por debajo de lo ya planificado en algún día: en ese caso '
+                                             'responde codigo="limite_menor_que_lo_planificado", el mínimo permitido y los días afectados.'),
             404: OpenApiResponse(description='El usuario no tiene perfil de organizador.'),
         },
     )
@@ -223,6 +227,22 @@ class LimiteDiarioView(APIView):
         perfil = PerfilOrganizador.objects.filter(usuario=request.user).first()
         if perfil is None:
             return Response({'detail': 'El usuario no tiene perfil de organizador.'}, status=404)
-        perfil.limite_horas_diarias = serializer.validated_data['limite_horas_diarias']
+        nuevo = serializer.validated_data['limite_horas_diarias']
+        # No se puede bajar el límite por debajo de lo que ya está planificado en algún día:
+        # primero hay que mover o reducir esas gestiones.
+        dias = dias_por_encima(request.user, nuevo)
+        if dias:
+            fecha, horas = dias[0]
+            minimo = math.ceil(horas)
+            return Response({
+                'limite_horas_diarias': [
+                    f'No puedes bajarlo a {nuevo} h: el {fecha:%d/%m} tienes {_num(horas)} h planificadas. '
+                    f'Con lo que tienes hoy, el mínimo es {minimo} h.'
+                ],
+                'codigo': 'limite_menor_que_lo_planificado',
+                'minimo': minimo,
+                'dias': [{'fecha': f.isoformat(), 'horas': _num(h)} for f, h in dias],
+            }, status=400)
+        perfil.limite_horas_diarias = nuevo
         perfil.save(update_fields=['limite_horas_diarias'])
         return Response({'limite_horas_diarias': perfil.limite_horas_diarias})
