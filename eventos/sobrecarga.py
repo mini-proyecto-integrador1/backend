@@ -54,11 +54,12 @@ def _cargas_por_dia(usuario, desde, hasta, excluir_id=None):
 
 
 def calcular_conflicto(usuario, fecha, horas_gestion, fecha_evento, *,
-                       excluir_id=None, carga_extra=None, limite=None):
+                       excluir_id=None, carga_extra=None, limite=None, evitar=None):
     """
     Devuelve None si la gestión cabe en `fecha`, o el diccionario del 409.
     - excluir_id: la gestión que se está editando (no se cuenta dos veces).
     - carga_extra: {fecha: horas} de gestiones nuevas aún sin guardar (POST de eventos).
+    - evitar: día que no sirve como sugerencia (al reprogramar, el día donde ya está la gestión).
     """
     limite = limite if limite is not None else limite_de(usuario)
     horas_gestion = Decimal(horas_gestion)
@@ -70,11 +71,12 @@ def calcular_conflicto(usuario, fecha, horas_gestion, fecha_evento, *,
     if planificadas <= limite:
         return None
 
-    # primer día desde hoy hasta la fecha del evento donde cabe (distinto al día en conflicto)
+    # primer día desde hoy hasta la fecha del evento donde cabe
+    # (distinto al día en conflicto y al día donde ya estaba la gestión)
     sugerido = None
     dia = hoy
     while dia <= fecha_evento:
-        if dia != fecha:
+        if dia != fecha and dia != evitar:
             ocupado = cargas.get(dia, CERO) + (carga_extra or {}).get(dia, CERO)
             if ocupado + horas_gestion <= limite:
                 sugerido = dia

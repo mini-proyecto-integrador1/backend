@@ -158,6 +158,8 @@ class SubtareaDetailView(generics.RetrieveUpdateDestroyAPIView):
                 datos.get('horas_estimadas', gestion.horas_estimadas),
                 gestion.evento.fecha,
                 excluir_id=gestion.pk,
+                # al reprogramar, sugerir "el mismo día donde ya está" no ayuda
+                evitar=gestion.fecha_limite if 'fecha_limite' in datos else None,
             )
             if conflicto:
                 raise SobrecargaError(conflicto)
