@@ -126,6 +126,30 @@ class LimiteDiarioTests(BaseSprint3):
         self.client.credentials()
         self.assertEqual(self.client.get(self.URL).status_code, 401)
 
+    def test_no_deja_bajarlo_por_debajo_de_lo_planificado(self):
+        self.gestion(2, 3)
+        self.gestion(2, 2)      # el día 2 suma 5 h
+        self.gestion(4, 4)
+        r = self.client.put(self.URL, {'limite_horas_diarias': 4}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.data['codigo'], 'limite_menor_que_lo_planificado')
+        self.assertEqual(r.data['minimo'], 5)
+        self.assertEqual(r.data['dias'], [{'fecha': str(self.dia(2)), 'horas': 5}])
+        self.assertIn('el mínimo es 5 h', r.data['limite_horas_diarias'][0])
+        self.assertEqual(self.client.get(self.URL).data['limite_horas_diarias'], 6)  # no cambió
+        self.assertEqual(self.client.put(self.URL, {'limite_horas_diarias': 5}, format='json').status_code, 200)
+
+    def test_una_gestion_sola_mas_grande_que_el_limite(self):
+        self.gestion(3, 5)
+        r = self.client.put(self.URL, {'limite_horas_diarias': 3}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.data['minimo'], 5)
+
+    def test_no_cuentan_las_hechas_ni_los_dias_pasados(self):
+        self.gestion(1, 5, estado='hecho')
+        self.gestion(-2, 5)
+        self.assertEqual(self.client.put(self.URL, {'limite_horas_diarias': 2}, format='json').status_code, 200)
+
 
 class SobrecargaTests(BaseSprint3):
     def url(self, gestion):

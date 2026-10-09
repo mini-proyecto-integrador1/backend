@@ -109,3 +109,13 @@ def conflictos_de_gestiones_nuevas(usuario, gestiones, fecha_evento):
         if conflicto:
             conflictos.append(conflicto)
     return conflictos
+
+def dias_por_encima(usuario, limite):
+    """Días (de hoy en adelante) cuyas gestiones por hacer suman más que `limite`, del más cargado al menos.
+    Se usa para no dejar bajar el límite por debajo de lo que ya está planificado."""
+    hoy = timezone.localdate()
+    filas = (SubtareaLogistica.objects
+             .filter(evento__usuario=usuario, estado__in=ESTADOS_QUE_CUENTAN, fecha_limite__gte=hoy)
+             .values('fecha_limite').annotate(total=Sum('horas_estimadas')))
+    dias = [(f['fecha_limite'], f['total']) for f in filas if f['total'] > limite]
+    return sorted(dias, key=lambda d: (-d[1], d[0]))
