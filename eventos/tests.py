@@ -225,3 +225,67 @@ class SobrecargaTests(BaseSprint3):
             'subtareas': [{'nombre': 'x', 'fecha_limite': str(self.dia(3)), 'horas_estimadas': 2}],
         }, format='json')
         self.assertEqual(r.status_code, 201)
+
+
+class DiasYSugerenciaTests(BaseSprint3):
+    """La sugerencia de día aparece de inmediato y siempre es un día que sirve."""
+
+    def test_al_reprogramar_no_sugiere_el_dia_donde_ya_esta(self):
+        self.gestion(0, 5)            # hoy: 5 h -> no caben 2 h más
+        b = self.gestion(1, 2)        # la gestión que se mueve está mañana
+        self.gestion(2, 5)            # destino lleno
+        r = self.client.patch(f'/api/subtareas/{b.id}/', {'fecha_limite': str(self.dia(2))}, format='json')
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.data['dia_sugerido'], str(self.dia(3)))  # antes sugería el día 1 (donde ya estaba)
+
+    def test_editar_horas_si_puede_sugerir_cualquier_otro_dia(self):
+        b = self.gestion(2, 4)
+        self.gestion(2, 2)
+        r = self.client.patch(f'/api/subtareas/{b.id}/', {'horas_estimadas': 5}, format='json')
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.data['dia_sugerido'], str(self.hoy))
+
+    def test_sin_dia_posible_no_sugiere(self):
+        r = self.client.post(f'/api/eventos/{self.evento.id}/subtareas/',
+                             {'nombre': 'x', 'fecha_limite': str(self.dia(1)), 'horas_estimadas': 7}, format='json')
+        self.assertEqual(r.status_code, 409)
+        self.assertIsNone(r.data['dia_sugerido'])
+
+    def test_la_sugerencia_siempre_sirve(self):
+        """Barrido de muchos escenarios: si hay sugerencia, cabe, está entre hoy y el evento, no es el día
+        en conflicto ni donde ya estaba, y es el primero posible; si no la hay, de verdad ningún día sirve."""
+        import random
+        rnd = random.Random(7)
+        for _ in range(60):
+            SubtareaLogistica.objects.all().delete()
+            for d in range(11):
+                for _ in range(rnd.randint(0, 2)):
+                    self.gestion(d, rnd.choice([1, 2, 3, 4]))
+            movida = self.gestion(rnd.randint(0, 10), rnd.choice([1, 2, 3, 5]))
+            destino = rnd.randint(0, 10)
+            if destino == movida.fecha_limite.toordinal() - self.hoy.toordinal():
+                continue
+            r = self.client.patch(f'/api/subtareas/{movida.id}/', {'fecha_limite': str(self.dia(destino))}, format='json')
+            if r.status_code == 200:
+                continue
+            self.assertEqual(r.status_code, 409)
+            h = float(movida.horas_estimadas)
+            carga = lambda d: sum(float(g.horas_estimadas) for g in SubtareaLogistica.objects.filter(
+                fecha_limite=self.dia(d)).exclude(pk=movida.pk))
+            posibles = [d for d in range(11) if d != destino and self.dia(d) != movida.fecha_limite
+                        and carga(d) + h <= 6]
+            esperado = str(self.dia(posibles[0])) if posibles else None
+            self.assertEqual(r.data['dia_sugerido'], esperado)
+
+
+class ZonaHorariaTests(BaseSprint3):
+    def test_de_noche_en_colombia_hoy_sigue_siendo_hoy(self):
+        from datetime import datetime
+        from unittest import mock
+        from zoneinfo import ZoneInfo
+        noche = datetime(2026, 10, 9, 21, 30, tzinfo=ZoneInfo('America/Bogota'))  # 02:30 del 10/10 en UTC
+        evento = Evento.objects.create(usuario=self.ana, nombre='Feria', tipo='Otro', fecha=date(2026, 10, 20))
+        with mock.patch('django.utils.timezone.now', return_value=noche):
+            r = self.client.post(f'/api/eventos/{evento.id}/subtareas/',
+                                 {'nombre': 'x', 'fecha_limite': '2026-10-09', 'horas_estimadas': 1}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)

@@ -116,7 +116,9 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+# Hora de Colombia: así "hoy" es el mismo día que ve el organizador (con UTC, desde las 7 p. m.
+# el servidor ya estaba en el día siguiente y rechazaba fechas de hoy como "en el pasado").
+TIME_ZONE = 'America/Bogota'
 
 USE_I18N = True
 
