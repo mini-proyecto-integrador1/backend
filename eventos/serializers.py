@@ -106,7 +106,7 @@ class SubtareaHoySerializer(serializers.ModelSerializer):
         model = SubtareaLogistica
         fields = [
             'id', 'nombre', 'fecha_limite', 'horas_estimadas',
-            'estado', 'nota', 'evento_id', 'evento_nombre'
+            'estado', 'nota', 'completado_en', 'evento_id', 'evento_nombre'
         ] 
 
 class SubtareaDetalleSerializer(serializers.ModelSerializer):
@@ -115,8 +115,8 @@ class SubtareaDetalleSerializer(serializers.ModelSerializer):
     class Meta:
         model = SubtareaLogistica
         fields = ['id', 'nombre', 'fecha_limite', 'horas_estimadas',
-                  'estado', 'nota', 'evento_id']
-        read_only_fields = ['id']
+                  'estado', 'nota', 'completado_en', 'evento_id']
+        read_only_fields = ['id', 'completado_en']
 
     def validate_nombre(self, value):
         if not value.strip():
@@ -140,6 +140,26 @@ class SubtareaDetalleSerializer(serializers.ModelSerializer):
                 f'La fecha límite debe ser antes o el mismo día del evento ({evento.fecha:%d/%m/%Y}).'
             )
         return value
+
+    def update(self, instance, validated_data):
+        from django.utils import timezone
+        estado_nuevo = validated_data.get('estado', instance.estado)
+        cambia_estado = estado_nuevo != instance.estado
+
+        # Si el estado cambia y la nota llega vacía, se conserva la anterior
+        if cambia_estado and 'nota' in validated_data \
+                and not (validated_data['nota'] or '').strip():
+            validated_data.pop('nota')
+
+        # La fecha de cierre la pone el servidor, nunca el cliente
+        if cambia_estado:
+            if estado_nuevo == 'hecho':
+                validated_data['completado_en'] = timezone.now()
+            elif instance.estado == 'hecho':
+                validated_data['completado_en'] = None
+
+        return super().update(instance, validated_data)    
+
 
 class SubtareaCrearSerializer(serializers.ModelSerializer):
     """
