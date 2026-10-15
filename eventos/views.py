@@ -8,9 +8,9 @@ from rest_framework.decorators import api_view
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
 from .documentacion import RESPUESTA_409, RESPUESTA_409_MULTIPLE
 from .models import Evento, SubtareaLogistica, PerfilOrganizador
+from .progreso import progreso_de_usuario, ProgresoGeneralSerializer
 from .serializers import (
     EventoSerializer, SubtareaHoySerializer, SubtareaDetalleSerializer,
     SubtareaCrearSerializer, RegistroSerializer, PerfilSerializer,
@@ -246,3 +246,11 @@ class LimiteDiarioView(APIView):
         perfil.limite_horas_diarias = nuevo
         perfil.save(update_fields=['limite_horas_diarias'])
         return Response({'limite_horas_diarias': perfil.limite_horas_diarias})
+
+class ProgresoGeneralView(APIView):
+    """GET /api/progreso/ -> progreso general y por evento del usuario autenticado."""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses=ProgresoGeneralSerializer)
+    def get(self, request):
+        return Response(progreso_de_usuario(request.user))
