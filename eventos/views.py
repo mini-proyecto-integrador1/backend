@@ -88,6 +88,7 @@ class VistaHoyView(generics.ListAPIView):
     Filtros opcionales por query params:
     - ?evento=<id>      filtra por un evento especifico
     - ?estado=<estado>  filtra por estado (pendiente, hecho, pospuesto)
+    Sin ?estado, las subtareas 'hecho' no se incluyen; usa ?estado=hecho para verlas.    
     """
     serializer_class = SubtareaHoySerializer
     permission_classes = [IsAuthenticated]
@@ -104,6 +105,8 @@ class VistaHoyView(generics.ListAPIView):
         estado = self.request.query_params.get('estado')
         if estado:
             queryset = queryset.filter(estado=estado)
+        else:
+            queryset = queryset.exclude(estado='hecho')  # por defecto no mostrar las hechas
 
         return queryset
 
