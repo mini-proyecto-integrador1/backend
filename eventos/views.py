@@ -153,23 +153,29 @@ class SubtareaDetailView(generics.RetrieveUpdateDestroyAPIView):
     def perform_update(self, serializer):
         gestion = serializer.instance
         datos = serializer.validated_data
+
         toca_la_carga = 'fecha_limite' in datos or 'horas_estimadas' in datos
-        estado_final = datos.get('estado', gestion.estado)
-        # cambiar SOLO el estado nunca da 409; una gestión 'hecho' no suma horas
-        if toca_la_carga and estado_final in ESTADOS_QUE_CUENTAN:
+
+        estado_anterior = gestion.estado
+        estado_final = datos.get('estado', estado_anterior)
+
+        # El estado pasa de "no cuenta" (hecho) a "sí cuenta" (pendiente/pospuesto):
+        # eso agrega horas al día y también debe validarse contra el límite.
+        entra_al_limite = estado_anterior not in ESTADOS_QUE_CUENTAN and estado_final in ESTADOS_QUE_CUENTAN
+
+        if (toca_la_carga or entra_al_limite) and estado_final in ESTADOS_QUE_CUENTAN:
             conflicto = calcular_conflicto(
                 self.request.user,
                 datos.get('fecha_limite', gestion.fecha_limite),
                 datos.get('horas_estimadas', gestion.horas_estimadas),
                 gestion.evento.fecha,
                 excluir_id=gestion.pk,
-                # al reprogramar, sugerir "el mismo día donde ya está" no ayuda
                 evitar=gestion.fecha_limite if 'fecha_limite' in datos else None,
             )
             if conflicto:
                 raise SobrecargaError(conflicto)
-        serializer.save()
 
+        serializer.save()
 
 @extend_schema_view(post=extend_schema(responses={
     201: SubtareaCrearSerializer,
