@@ -3,6 +3,9 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from .models import Evento, SubtareaLogistica, PerfilOrganizador
+from drf_spectacular.utils import extend_schema_field
+from .progreso import calcular_progreso, ProgresoSerializer
+
 
 class SubtareaLogisticaSerializer(serializers.ModelSerializer):
     class Meta:
@@ -14,7 +17,8 @@ class SubtareaLogisticaSerializer(serializers.ModelSerializer):
 class EventoSerializer(serializers.ModelSerializer):
     # Permite mandar la lista de subtareas dentro del mismo POST del evento
     subtareas = SubtareaLogisticaSerializer(many=True, required=False)
-
+    progreso = serializers.SerializerMethodField()
+    
     nombre = serializers.CharField(
         error_messages={'blank': 'El nombre del evento es obligatorio.'}
     )
@@ -24,7 +28,7 @@ class EventoSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Evento
-        fields = ['id', 'nombre', 'tipo', 'fecha', 'limite_horas_diarias', 'creado_en', 'subtareas']
+        fields = ['id', 'nombre', 'tipo', 'fecha', 'limite_horas_diarias', 'creado_en', 'subtareas', 'progreso']
         read_only_fields = ['id', 'creado_en']
 
     def validate_nombre(self, value):
@@ -48,6 +52,11 @@ class EventoSerializer(serializers.ModelSerializer):
         # Las subtareas se editan por sus propios endpoints, aqui se ignoran
         validated_data.pop('subtareas', None)
         return super().update(validated_data_instance, validated_data)
+
+    @extend_schema_field(ProgresoSerializer)
+    def get_progreso(self, obj):
+        return calcular_progreso(obj.subtareas.all())
+
 
 class RegistroSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
@@ -106,7 +115,7 @@ class SubtareaHoySerializer(serializers.ModelSerializer):
         model = SubtareaLogistica
         fields = [
             'id', 'nombre', 'fecha_limite', 'horas_estimadas',
-            'estado', 'nota', 'evento_id', 'evento_nombre'
+            'estado', 'nota', 'completado_en', 'evento_id', 'evento_nombre'
         ] 
 
 class SubtareaDetalleSerializer(serializers.ModelSerializer):
@@ -115,8 +124,8 @@ class SubtareaDetalleSerializer(serializers.ModelSerializer):
     class Meta:
         model = SubtareaLogistica
         fields = ['id', 'nombre', 'fecha_limite', 'horas_estimadas',
-                  'estado', 'nota', 'evento_id']
-        read_only_fields = ['id']
+                  'estado', 'nota', 'completado_en', 'evento_id']
+        read_only_fields = ['id', 'completado_en']
 
     def validate_nombre(self, value):
         if not value.strip():
@@ -140,6 +149,26 @@ class SubtareaDetalleSerializer(serializers.ModelSerializer):
                 f'La fecha límite debe ser antes o el mismo día del evento ({evento.fecha:%d/%m/%Y}).'
             )
         return value
+
+    def update(self, instance, validated_data):
+        from django.utils import timezone
+        estado_nuevo = validated_data.get('estado', instance.estado)
+        cambia_estado = estado_nuevo != instance.estado
+
+        # Si el estado cambia y la nota llega vacía, se conserva la anterior
+        if cambia_estado and 'nota' in validated_data \
+                and not (validated_data['nota'] or '').strip():
+            validated_data.pop('nota')
+
+        # La fecha de cierre la pone el servidor, nunca el cliente
+        if cambia_estado:
+            if estado_nuevo == 'hecho':
+                validated_data['completado_en'] = timezone.now()
+            elif instance.estado == 'hecho':
+                validated_data['completado_en'] = None
+
+        return super().update(instance, validated_data)    
+
 
 class SubtareaCrearSerializer(serializers.ModelSerializer):
     """

@@ -114,7 +114,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'es'
 
 # Hora de Colombia: así "hoy" es el mismo día que ve el organizador (con UTC, desde las 7 p. m.
 # el servidor ya estaba en el día siguiente y rechazaba fechas de hoy como "en el pasado").
@@ -150,6 +150,7 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
     ],
+    'EXCEPTION_HANDLER': 'eventos.errores.manejador_de_errores',
 }
 
 SPECTACULAR_SETTINGS = {
