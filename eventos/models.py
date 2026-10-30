@@ -30,6 +30,15 @@ class SubtareaLogistica(models.Model):
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='pendiente')
     nota = models.TextField(blank=True, null=True)
     creado_en = models.DateTimeField(auto_now_add=True)
-
+    completado_en = models.DateTimeField(null=True, blank=True)
+    
     def __str__(self):
         return f"{self.nombre} ({self.evento.nombre})"
+
+class PerfilOrganizador(models.Model):
+    usuario = models.OneToOneField(User, on_delete=models.CASCADE, related_name='perfil')
+    fecha_nacimiento = models.DateField()
+    limite_horas_diarias = models.PositiveSmallIntegerField(default=6)
+
+    def __str__(self):
+        return f"Perfil de {self.usuario.email}"

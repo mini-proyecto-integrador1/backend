@@ -1,5 +1,10 @@
+import re
 from rest_framework import serializers
-from .models import Evento, SubtareaLogistica
+from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from .models import Evento, SubtareaLogistica, PerfilOrganizador
+from drf_spectacular.utils import extend_schema_field
+from .progreso import calcular_progreso, ProgresoSerializer
 
 
 class SubtareaLogisticaSerializer(serializers.ModelSerializer):
@@ -12,7 +17,8 @@ class SubtareaLogisticaSerializer(serializers.ModelSerializer):
 class EventoSerializer(serializers.ModelSerializer):
     # Permite mandar la lista de subtareas dentro del mismo POST del evento
     subtareas = SubtareaLogisticaSerializer(many=True, required=False)
-
+    progreso = serializers.SerializerMethodField()
+    
     nombre = serializers.CharField(
         error_messages={'blank': 'El nombre del evento es obligatorio.'}
     )
@@ -22,7 +28,7 @@ class EventoSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Evento
-        fields = ['id', 'nombre', 'tipo', 'fecha', 'limite_horas_diarias', 'creado_en', 'subtareas']
+        fields = ['id', 'nombre', 'tipo', 'fecha', 'limite_horas_diarias', 'creado_en', 'subtareas', 'progreso']
         read_only_fields = ['id', 'creado_en']
 
     def validate_nombre(self, value):
@@ -41,3 +47,172 @@ class EventoSerializer(serializers.ModelSerializer):
         for subtarea_data in subtareas_data:
             SubtareaLogistica.objects.create(evento=evento, **subtarea_data)
         return evento
+
+    def update(self, validated_data_instance, validated_data):
+        # Las subtareas se editan por sus propios endpoints, aqui se ignoran
+        validated_data.pop('subtareas', None)
+        return super().update(validated_data_instance, validated_data)
+
+    @extend_schema_field(ProgresoSerializer)
+    def get_progreso(self, obj):
+        return calcular_progreso(obj.subtareas.all())
+
+
+class RegistroSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, validators=[validate_password])
+    first_name = serializers.CharField(required=True)
+    last_name = serializers.CharField(required=True)
+    fecha_nacimiento = serializers.DateField(required=True, write_only=True)
+
+    class Meta:
+        model = User
+        fields = ['id', 'email', 'password', 'first_name', 'last_name', 'fecha_nacimiento']
+        extra_kwargs = {
+            'id': {'read_only': True},
+        }
+
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError('Ya existe una cuenta registrada con este email.')
+        return value
+
+    def create(self, validated_data):
+        fecha_nacimiento = validated_data.pop('fecha_nacimiento')
+        user = User.objects.create_user(
+            username=validated_data['email'],
+            email=validated_data['email'],
+            password=validated_data['password'],
+            first_name=validated_data['first_name'],
+            last_name=validated_data['last_name'],
+        )
+        PerfilOrganizador.objects.create(usuario=user, fecha_nacimiento=fecha_nacimiento)
+        return user
+
+
+    def validate_first_name(self, value):
+        if not re.match(r'^[A-Za-zÁÉÍÓÚáéíóúÑñ\s]+$', value):
+            raise serializers.ValidationError('El nombre solo puede contener letras.')
+        return value
+
+    def validate_last_name(self, value):
+        if not re.match(r'^[A-Za-zÁÉÍÓÚáéíóúÑñ\s]+$', value):
+            raise serializers.ValidationError('El apellido solo puede contener letras.')
+        return value
+
+class PerfilSerializer(serializers.ModelSerializer):
+    fecha_nacimiento = serializers.DateField(source='perfil.fecha_nacimiento')
+
+    class Meta:
+        model = User
+        fields = ['id', 'email', 'first_name', 'last_name', 'fecha_nacimiento']
+
+
+class SubtareaHoySerializer(serializers.ModelSerializer):
+    evento_id = serializers.IntegerField(source='evento.id', read_only=True)
+    evento_nombre = serializers.CharField(source='evento.nombre', read_only=True)
+
+    class Meta:
+        model = SubtareaLogistica
+        fields = [
+            'id', 'nombre', 'fecha_limite', 'horas_estimadas',
+            'estado', 'nota', 'completado_en', 'evento_id', 'evento_nombre'
+        ] 
+
+class SubtareaDetalleSerializer(serializers.ModelSerializer):
+    evento_id = serializers.IntegerField(source='evento.id', read_only=True)
+
+    class Meta:
+        model = SubtareaLogistica
+        fields = ['id', 'nombre', 'fecha_limite', 'horas_estimadas',
+                  'estado', 'nota', 'completado_en', 'evento_id']
+        read_only_fields = ['id', 'completado_en']
+
+    def validate_nombre(self, value):
+        if not value.strip():
+            raise serializers.ValidationError('El nombre de la subtarea es obligatorio.')
+        return value
+
+    def validate_horas_estimadas(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('Las horas estimadas deben ser mayores a 0.')
+        return value
+
+    def validate_fecha_limite(self, value):
+        from django.utils import timezone
+        if self.instance is None or value == self.instance.fecha_limite:
+            return value
+        if value < timezone.localdate():
+            raise serializers.ValidationError('La fecha límite no puede ser en el pasado.')
+        evento = self.instance.evento
+        if value > evento.fecha:
+            raise serializers.ValidationError(
+                f'La fecha límite debe ser antes o el mismo día del evento ({evento.fecha:%d/%m/%Y}).'
+            )
+        return value
+
+    def update(self, instance, validated_data):
+        from django.utils import timezone
+        estado_nuevo = validated_data.get('estado', instance.estado)
+        cambia_estado = estado_nuevo != instance.estado
+
+        # Si el estado cambia y la nota llega vacía, se conserva la anterior
+        if cambia_estado and 'nota' in validated_data \
+                and not (validated_data['nota'] or '').strip():
+            validated_data.pop('nota')
+
+        # La fecha de cierre la pone el servidor, nunca el cliente
+        if cambia_estado:
+            if estado_nuevo == 'hecho':
+                validated_data['completado_en'] = timezone.now()
+            elif instance.estado == 'hecho':
+                validated_data['completado_en'] = None
+
+        return super().update(instance, validated_data)    
+
+
+class SubtareaCrearSerializer(serializers.ModelSerializer):
+    """
+    Agregar una gestión logística a un evento que ya existe.
+    El evento llega por la URL (context['evento']); la gestión empieza en estado 'pendiente'.
+    """
+
+    class Meta:
+        model = SubtareaLogistica
+        fields = ['id', 'nombre', 'fecha_limite', 'horas_estimadas', 'estado', 'nota']
+        read_only_fields = ['id', 'estado']
+
+    def validate_nombre(self, value):
+        if not value.strip():
+            raise serializers.ValidationError('El nombre de la gestión es obligatorio.')
+        return value.strip()
+
+    def validate_horas_estimadas(self, value):
+        if value <= 0 or value > 16:
+            raise serializers.ValidationError('Las horas estimadas deben estar entre 0,5 y 16.')
+        return value
+
+    def validate_fecha_limite(self, value):
+        from django.utils import timezone
+        evento = self.context['evento']
+        if value < timezone.localdate():
+            raise serializers.ValidationError('La fecha límite no puede ser en el pasado.')
+        if value > evento.fecha:
+            raise serializers.ValidationError(
+                f'La fecha límite debe ser antes o el mismo día del evento ({evento.fecha:%d/%m/%Y}).'
+            )
+        return value
+
+    def create(self, validated_data):
+        return SubtareaLogistica.objects.create(evento=self.context['evento'], **validated_data)
+
+
+class LimiteDiarioSerializer(serializers.Serializer):
+
+    _MENSAJE = 'El límite debe estar entre 1 y 16 horas.'
+    limite_horas_diarias = serializers.IntegerField(
+    min_value=1, max_value=16,
+    error_messages={
+        'invalid': _MENSAJE, 'min_value': _MENSAJE, 'max_value': _MENSAJE,
+        'null': _MENSAJE, 'required': _MENSAJE,
+    },
+)

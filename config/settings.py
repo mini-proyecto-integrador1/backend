@@ -26,10 +26,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-$^48_pep9l!6i(xucv!v!)gz=3__a2=dfgc__u4qeaa2xepjaa'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-$^48_pep9l!6i(xucv!v!)gz=3__a2=dfgc__u4qeaa2xepjaa')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 # permitir cualquier dominio, es por el momento
 ALLOWED_HOSTS = ['*']
@@ -44,6 +44,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework.authtoken',
+    'drf_spectacular',
     'corsheaders',
     'eventos',
 ]
@@ -110,6 +112,9 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 8,
+        }
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
@@ -123,9 +128,11 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'es'
 
-TIME_ZONE = 'UTC'
+# Hora de Colombia: así "hoy" es el mismo día que ve el organizador (con UTC, desde las 7 p. m.
+# el servidor ya estaba en el día siguiente y rechazaba fechas de hoy como "en el pasado").
+TIME_ZONE = 'America/Bogota'
 
 USE_I18N = True
 
@@ -151,3 +158,17 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "https://frontend-sepia-eight-44.vercel.app",
 ]
+
+REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+    ],
+    'EXCEPTION_HANDLER': 'eventos.errores.manejador_de_errores',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'API - Organizador de Eventos Independientes',
+    'DESCRIPTION': 'Documentacion de la API del Proyecto Integrador I',
+    'VERSION': '1.0.0',
+}
